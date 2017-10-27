@@ -19,6 +19,15 @@ using namespace OGL;
 bool	Demo1::Init(void)
 {
 	ComPtr<IDXGIFactory4>	factory;
+#if defined(_DEBUG)
+	// DirectX12のデバッグレイヤーを有効にする
+	{
+		ComPtr<ID3D12Debug>	debugController;
+		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+			debugController->EnableDebugLayer();
+		}
+	}
+#endif
 
 	//CreateDevice
 	{
@@ -56,7 +65,6 @@ bool	Demo1::Init(void)
 			return false;
 		}
 	}
-
 	//CreateSwapChain
 	{
 		DXGI_SWAP_CHAIN_DESC1	swapChainDesc = {};
@@ -121,7 +129,6 @@ bool	Demo1::Init(void)
 			return false;
 		}
 	}
-
 	//CreateRootSignature
 	{
 		D3D12_ROOT_SIGNATURE_DESC	rootSignatureDesc;
@@ -141,95 +148,148 @@ bool	Demo1::Init(void)
 			MessageBox(nullptr, "ルートシグネチャの作成に失敗しました。", "Error", MB_OK);
 			return false;
 		}
+	}
 
-		//CreateGraphicsPipelineState
+	//CreateGraphicsPipelineState
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC	psoDesc = {};
+
+		//SetRootSignature
+		psoDesc.pRootSignature = m_rootSignature.Get();
+
+		//CreateInputElement
+		D3D12_INPUT_ELEMENT_DESC	inputElementDescs[] = {
+			{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT	,0,	0,	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+			{"COLOR",	0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,	12,	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+		};
+		psoDesc.InputLayout = { inputElementDescs,_countof(inputElementDescs) };
+
+		//CreateVertexShader
+		ComPtr<ID3DBlob> vs;
+		D3D12_SHADER_BYTECODE shaderByteCode;
+		if (FAILED(D3DReadFileToBlob(L"cso/Demo1_VS.cso", vs.GetAddressOf()))) {
+			MessageBox(nullptr, "頂点シェーダーの読み込みに失敗しました。", "Error", MB_OK);
+			return false;
+		}
+		//if (FAILED(D3DCompileFromFile(L"src/GameLoop/Demo1/HLSL/Demo1_VS.hlsl", nullptr, nullptr, "main", "vs_5_0", 0, 0, &vs, nullptr))) return FALSE;
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vs.Get());
+
+		//CreatePixelShader
+		ComPtr<ID3DBlob> ps;
+		D3D12_SHADER_BYTECODE shaderByteCode_;
+		if (FAILED(D3DReadFileToBlob(L"cso/Demo1_PS.cso", ps.GetAddressOf()))) {
+			MessageBox(nullptr, "ピクセルシェーダーの読み込みに失敗しました。", "Error", MB_OK);
+			return false;
+		}
+		//if (FAILED(D3DCompileFromFile(L"src/GameLoop/Demo1/HLSL/Demo1_PS.hlsl", nullptr, nullptr, "main", "ps_5_0", 0, 0, &ps, nullptr))) return FALSE;
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(ps.Get());
+
+		//CreateRasterizerState
+		D3D12_RASTERIZER_DESC	rsDesc = {};
+		rsDesc.FillMode = D3D12_FILL_MODE_SOLID;
+		rsDesc.CullMode = D3D12_CULL_MODE_BACK;
+		rsDesc.FrontCounterClockwise = false;
+		rsDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+		rsDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+		rsDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+		rsDesc.DepthClipEnable = true;
+		rsDesc.MultisampleEnable = false;
+		rsDesc.AntialiasedLineEnable = false;
+		rsDesc.ForcedSampleCount = 0;
+		rsDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+		psoDesc.RasterizerState = rsDesc;
+
+		//CreateBlendState
+		D3D12_BLEND_DESC	bsDesc = {};
+		bsDesc.AlphaToCoverageEnable = false;
+		bsDesc.IndependentBlendEnable = false;
+		for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++) {
+			D3D12_RENDER_TARGET_BLEND_DESC* rtbDesc = &bsDesc.RenderTarget[i];
+			rtbDesc->BlendEnable = false;
+			rtbDesc->LogicOpEnable = false;
+			rtbDesc->SrcBlend = D3D12_BLEND_ONE;
+			rtbDesc->DestBlend = D3D12_BLEND_ZERO;
+			rtbDesc->BlendOp = D3D12_BLEND_OP_ADD;
+			rtbDesc->SrcBlendAlpha = D3D12_BLEND_ONE;
+			rtbDesc->DestBlendAlpha = D3D12_BLEND_ZERO;
+			rtbDesc->BlendOpAlpha = D3D12_BLEND_OP_ADD;
+			rtbDesc->LogicOp = D3D12_LOGIC_OP_NOOP;
+			rtbDesc->RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		}
+		psoDesc.BlendState = bsDesc;
+
+		psoDesc.DepthStencilState.DepthEnable = false;
+		psoDesc.DepthStencilState.StencilEnable = false;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.SampleDesc.Count = 1;
+		if (FAILED(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)))) {
+			MessageBox(nullptr, "パイプラインステートの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+	}
+	//CreateCommandList
+	{
+		if (FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)))) {
+			return false;
+		}
+		if (FAILED(m_commandList->Close())) {
+			return false;
+		}
+	}
+	//CreateVertexBuffer
+	{
+		//CreateGeometryData
+		Vertex vertex[]{
+			{ { 0.0f,  0.25f, 0.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
+			{ { 0.25f, -0.25f, 0.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
+			{ { -0.25f, -0.25f, 0.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } }
+		};
+		//CreateHeapProperties
+		D3D12_HEAP_PROPERTIES heapProperties = {};
 		{
-			D3D12_GRAPHICS_PIPELINE_STATE_DESC	psoDesc = {};
-
-			psoDesc.pRootSignature = m_rootSignature.Get();
-
-			//CreateInputElement
-			{
-				D3D12_INPUT_ELEMENT_DESC	inputElementDescs[] = {
-					{"POSITION",	0,DXGI_FORMAT_R32G32B32_FLOAT		,0,	0,	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
-					{ "COLOR",		0,DXGI_FORMAT_R32G32B32A32_FLOAT	,0,	12,	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0 }
-				};
-				psoDesc.InputLayout = { inputElementDescs,_countof(inputElementDescs) };
-			}
-			//CreateVertexShader
-			{
-				ComPtr<ID3DBlob> vs;
-				D3D12_SHADER_BYTECODE shaderByteCode;
-				if (FAILED(D3DReadFileToBlob(L"cso/Demo1_VS.cso", vs.GetAddressOf()))) {
-					MessageBox(nullptr, "頂点シェーダーの読み込みに失敗しました。", "Error", MB_OK);
-					return false;
-				}
-			//	if (FAILED(D3DCompileFromFile(L"src/GameLoop/Demo1/HLSL/Demo1_VS.hlsl", nullptr, nullptr, "main", "vs_5_0", 0, 0, vs.GetAddressOf(), nullptr))) return FALSE;
-				shaderByteCode.pShaderBytecode = vs->GetBufferPointer();
-				shaderByteCode.BytecodeLength = vs->GetBufferSize();
-				psoDesc.VS = shaderByteCode;
-			}
-			//CreatePixelShader
-			{
-				ComPtr<ID3DBlob> ps;
-				D3D12_SHADER_BYTECODE shaderByteCode;
-				if (FAILED(D3DReadFileToBlob(L"cso/Demo1_PS.cso", ps.GetAddressOf()))) {
-					MessageBox(nullptr, "ピクセルシェーダーの読み込みに失敗しました。", "Error", MB_OK);
-					return false;
-				}
-//				if (FAILED(D3DCompileFromFile(L"src/GameLoop/Demo1/HLSL/Demo1_PS.hlsl", nullptr, nullptr, "main", "ps_5_0", 0, 0, ps.GetAddressOf(), nullptr))) return FALSE;
-				shaderByteCode.pShaderBytecode = ps->GetBufferPointer();
-				shaderByteCode.BytecodeLength = ps->GetBufferSize();
-				psoDesc.PS = shaderByteCode;
-			}
-			//CreateRasterizerState
-			{
-				D3D12_RASTERIZER_DESC	rsDesc = {};
-				rsDesc.FillMode = D3D12_FILL_MODE_SOLID;
-				rsDesc.CullMode = D3D12_CULL_MODE_BACK;
-				rsDesc.FrontCounterClockwise = false;
-				rsDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
-				rsDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
-				rsDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
-				rsDesc.DepthClipEnable = true;
-				rsDesc.MultisampleEnable = false;
-				rsDesc.AntialiasedLineEnable = false;
-				rsDesc.ForcedSampleCount = 0;
-				rsDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-				psoDesc.RasterizerState = rsDesc;
-			}
-			//CreateBlendState
-			{
-				D3D12_BLEND_DESC	bsDesc = {};
-				bsDesc.AlphaToCoverageEnable = false;
-				bsDesc.IndependentBlendEnable = false;
-				for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++) {
-					D3D12_RENDER_TARGET_BLEND_DESC* rtbDesc = &bsDesc.RenderTarget[i];
-					rtbDesc->BlendEnable = false;
-					rtbDesc->LogicOpEnable = false;
-					rtbDesc->SrcBlend = D3D12_BLEND_ONE;
-					rtbDesc->DestBlend = D3D12_BLEND_ZERO;
-					rtbDesc->BlendOp = D3D12_BLEND_OP_ADD;
-					rtbDesc->SrcBlendAlpha = D3D12_BLEND_ONE;
-					rtbDesc->DestBlendAlpha = D3D12_BLEND_ZERO;
-					rtbDesc->BlendOpAlpha = D3D12_BLEND_OP_ADD;
-					rtbDesc->LogicOp = D3D12_LOGIC_OP_NOOP;
-					rtbDesc->RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-				}
-				psoDesc.BlendState = bsDesc;
-			}
-			psoDesc.DepthStencilState.DepthEnable = false;
-			psoDesc.DepthStencilState.StencilEnable = false;
-			psoDesc.SampleMask = UINT_MAX;
-			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-			psoDesc.NumRenderTargets = 1;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-			psoDesc.SampleDesc.Count = 1;
-
-			if (FAILED(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)))) {
-				MessageBox(nullptr, "パイプラインステートの作成に失敗しました。", "Error", MB_OK);
+			heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+			heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heapProperties.CreationNodeMask = 1;
+			heapProperties.VisibleNodeMask = 1;
+		}
+		//CreateResourceDesc
+		D3D12_RESOURCE_DESC resourcedesc = {};
+		{
+			resourcedesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			resourcedesc.Alignment = 0;
+			resourcedesc.Width = sizeof(vertex);
+			resourcedesc.Height = 1;
+			resourcedesc.DepthOrArraySize = 1;
+			resourcedesc.MipLevels = 1;
+			resourcedesc.Format = DXGI_FORMAT_UNKNOWN;
+			resourcedesc.SampleDesc.Count = 1;
+			resourcedesc.SampleDesc.Quality = 0;
+			resourcedesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			resourcedesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		}
+		//CreateResourceForVertexBuffer
+		if (FAILED(m_device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourcedesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexBuffer)))) {
+			return false;
+		}
+		//CopyToVertexBuffer
+		{
+			UINT8*	dataBegin;
+			D3D12_RANGE readRange = { 0,0 };
+			if (FAILED(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&dataBegin)))) {
 				return false;
 			}
+			memcpy(dataBegin, vertex, sizeof(vertex));
+			m_vertexBuffer->Unmap(0, nullptr);
+		}
+		//InitializeVertexBufferView
+		{
+			m_vertrexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
+			m_vertrexBufferView.StrideInBytes = sizeof(Vertex);
+			m_vertrexBufferView.SizeInBytes = sizeof(vertex);
 		}
 	}
 
