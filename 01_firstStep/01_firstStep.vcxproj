@@ -53,6 +53,7 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\d3dx12.h" />
     <ClInclude Include="src\GameLoop\Demo1\Demo1.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

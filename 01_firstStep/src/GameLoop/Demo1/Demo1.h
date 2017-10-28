@@ -37,7 +37,8 @@ namespace OGL
 			XMFLOAT4	col;
 		};
 		const int						m_frameBufferCount = 2;
-
+		D3D12_VIEWPORT						m_viweport;
+		D3D12_RECT							m_scissorRect;
 		ComPtr<ID3D12Device>				m_device;
 		ComPtr<ID3D12CommandQueue>			m_commandQueue;
 		ComPtr<IDXGISwapChain3>				m_swapChain;
@@ -48,11 +49,17 @@ namespace OGL
 		ComPtr<ID3D12PipelineState>			m_pipelineState;
 		ComPtr<ID3D12GraphicsCommandList>	m_commandList; 
 		ComPtr<ID3D12Resource>				m_vertexBuffer;
-		D3D12_VERTEX_BUFFER_VIEW			m_vertrexBufferView;
+		D3D12_VERTEX_BUFFER_VIEW			m_vertexBufferView;
+
+		// 同期オブジェクト
+		HANDLE				m_fenceEvent;
+		ComPtr<ID3D12Fence>	m_fence;
+		UINT64				m_fenceValue;
 
 		UINT							m_frameBufferIndex;
 		UINT							m_rtvDescriptorSize;
 
+		bool WaitForPreviousFrame();
 	public:
 		virtual ~Demo1() {};
 		Demo1() {};

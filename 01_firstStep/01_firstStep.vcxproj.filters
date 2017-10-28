@@ -26,6 +26,9 @@
     <ClInclude Include="src\GameLoop\Demo1\Demo1.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="src\d3dx12.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="src\GameLoop\Demo1\HLSL\Demo1_PS.hlsl">

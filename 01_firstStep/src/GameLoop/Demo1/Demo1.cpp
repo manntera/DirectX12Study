@@ -105,12 +105,25 @@ bool	Demo1::Init(void)
 		}
 		m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	}
+	//CreateViewport
+	{
+		m_viweport = { 0.0f,0.0f,
+			(float)Window::GetInstance()->GetWidth(),
+			(float)Window::GetInstance()->GetHeight() };
 
+	}
+	//CreateScissorRect
+	{
+		m_scissorRect = { 0,0,
+			(LONG)Window::GetInstance()->GetWidth(),
+			(LONG)Window::GetInstance()->GetHeight() };
+	}
 	//CreateBackBuffer
 	{
 		D3D12_CPU_DESCRIPTOR_HANDLE	rtvHandle = {};
 		rtvHandle.ptr = m_rtvHeap->GetCPUDescriptorHandleForHeapStart().ptr;
 		m_backBuffer = new ComPtr<ID3D12Resource>[m_frameBufferCount];
+
 		for (UINT i = 0; i < m_frameBufferCount; i++) {
 			if (FAILED(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_backBuffer[i])))) {
 				MessageBox(nullptr, "バックッバッファの作成に失敗しました。", "Error", MB_OK);
@@ -171,7 +184,6 @@ bool	Demo1::Init(void)
 			MessageBox(nullptr, "頂点シェーダーの読み込みに失敗しました。", "Error", MB_OK);
 			return false;
 		}
-		//if (FAILED(D3DCompileFromFile(L"src/GameLoop/Demo1/HLSL/Demo1_VS.hlsl", nullptr, nullptr, "main", "vs_5_0", 0, 0, &vs, nullptr))) return FALSE;
 		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vs.Get());
 
 		//CreatePixelShader
@@ -181,7 +193,6 @@ bool	Demo1::Init(void)
 			MessageBox(nullptr, "ピクセルシェーダーの読み込みに失敗しました。", "Error", MB_OK);
 			return false;
 		}
-		//if (FAILED(D3DCompileFromFile(L"src/GameLoop/Demo1/HLSL/Demo1_PS.hlsl", nullptr, nullptr, "main", "ps_5_0", 0, 0, &ps, nullptr))) return FALSE;
 		psoDesc.PS = CD3DX12_SHADER_BYTECODE(ps.Get());
 
 		//CreateRasterizerState
@@ -232,12 +243,14 @@ bool	Demo1::Init(void)
 	}
 	//CreateCommandList
 	{
-		if (FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)))) {
-			return false;
-		}
-		if (FAILED(m_commandList->Close())) {
-			return false;
-		}
+	if (FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)))) {
+		MessageBox(nullptr, "コマンドリストの作成に失敗しました。", "Error", MB_OK);
+		return false;
+	}
+	if (FAILED(m_commandList->Close())) {
+		MessageBox(nullptr, "コマンドリストの作成に失敗しました。", "Error", MB_OK);
+		return false;
+	}
 	}
 	//CreateVertexBuffer
 	{
@@ -273,6 +286,7 @@ bool	Demo1::Init(void)
 		}
 		//CreateResourceForVertexBuffer
 		if (FAILED(m_device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourcedesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexBuffer)))) {
+			MessageBox(nullptr, "頂点バッファ用のリソースの作成に失敗しました。", "Error", MB_OK);
 			return false;
 		}
 		//CopyToVertexBuffer
@@ -280,6 +294,7 @@ bool	Demo1::Init(void)
 			UINT8*	dataBegin;
 			D3D12_RANGE readRange = { 0,0 };
 			if (FAILED(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&dataBegin)))) {
+				MessageBox(nullptr, "頂点バッファの作成に失敗しました。", "Error", MB_OK);
 				return false;
 			}
 			memcpy(dataBegin, vertex, sizeof(vertex));
@@ -287,9 +302,28 @@ bool	Demo1::Init(void)
 		}
 		//InitializeVertexBufferView
 		{
-			m_vertrexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-			m_vertrexBufferView.StrideInBytes = sizeof(Vertex);
-			m_vertrexBufferView.SizeInBytes = sizeof(vertex);
+			m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
+			m_vertexBufferView.StrideInBytes = sizeof(Vertex);
+			m_vertexBufferView.SizeInBytes = sizeof(vertex);
+		}
+		//CreateFence
+		{
+			if (FAILED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)))) {
+				MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
+				return false;
+			}
+			m_fenceValue = 1;
+			m_fenceEvent = CreateEvent(nullptr, false, false, nullptr);
+			if (m_fenceEvent == nullptr) {
+				if (FAILED(HRESULT_FROM_WIN32(GetLastError()))) {
+					MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
+					return false;
+				}
+			}
+			if (!WaitForPreviousFrame()) {
+				MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
+				return false;
+			}
 		}
 	}
 
@@ -302,6 +336,8 @@ bool	Demo1::Init(void)
 //◇---------------------◇
 bool	Demo1::Update(void)
 {
+
+
 	return true;
 }
 //◇-------------------◇
@@ -310,6 +346,61 @@ bool	Demo1::Update(void)
 //◇-------------------◇
 bool	Demo1::Draw(void)
 {
+	if (FAILED(m_commandAllocator->Reset())) {
+		return false;
+	}
+	if (FAILED(m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get()))) {
+		return false;
+	}
+	m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+	m_commandList->RSSetViewports(1, &m_viweport);
+	m_commandList->RSSetScissorRects(1, &m_scissorRect);
+
+	//バックバッファをレンダリングターゲットに
+	{
+		D3D12_RESOURCE_BARRIER	resourceBarrier = {};
+		resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		resourceBarrier.Transition.pResource = m_backBuffer[m_frameBufferIndex].Get();
+		resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+		resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		m_commandList->ResourceBarrier(1, &resourceBarrier);
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE hRtv = {};
+	hRtv.ptr = m_rtvHeap->GetCPUDescriptorHandleForHeapStart().ptr + m_frameBufferIndex*m_rtvDescriptorSize;
+	m_commandList->OMSetRenderTargets(1, &hRtv, FALSE, nullptr);
+
+	//バックバッファへの描画
+	float clearCol[] = { 0.0f,0.2f,0.4f ,1.0f };
+	m_commandList->ClearRenderTargetView(hRtv, clearCol, 0, nullptr);
+	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+	m_commandList->DrawInstanced(3, 1, 0, 0);
+
+	//バックバッファを表示
+	{
+		D3D12_RESOURCE_BARRIER	resourceBarrier = {};
+		resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		resourceBarrier.Transition.pResource = m_backBuffer[m_frameBufferIndex].Get();
+		resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		m_commandList->ResourceBarrier(1, &resourceBarrier);
+	}
+	if (FAILED(m_commandList->Close())) {
+		return false;
+	}
+	ID3D12CommandList* commandList[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(commandList), commandList);
+
+	//フレームの出力
+	if (FAILED(m_swapChain->Present(1, 0))) {
+		return false;
+	}
+	WaitForPreviousFrame();
 	return true;
 }
 //◇---------------------◇
@@ -318,5 +409,25 @@ bool	Demo1::Draw(void)
 //◇---------------------◇
 bool	Demo1::Uninit(void)
 {
+	WaitForPreviousFrame();
+	CloseHandle(m_fenceEvent);
+	delete[](m_backBuffer);
 	return true;
+}
+
+bool Demo1::WaitForPreviousFrame()
+{
+	const UINT64	fence = m_fenceValue;
+	if (FAILED(m_commandQueue->Signal(m_fence.Get(), fence))) return FALSE;
+	m_fenceValue++;
+
+	// 前のフレームが終了するまで待機
+	if (m_fence->GetCompletedValue() < fence) {
+		if (FAILED(m_fence->SetEventOnCompletion(fence, m_fenceEvent))) return FALSE;
+		WaitForSingleObject(m_fenceEvent, INFINITE);
+	}
+
+	m_frameBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
+
+	return TRUE;
 }

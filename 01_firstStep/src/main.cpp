@@ -14,6 +14,7 @@
 
 #include"GameLoop\Demo1\Demo1.h"
 
+#include <memory>
 using namespace OGL;
 
 //¡----------------¡//
@@ -31,6 +32,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	UNREFERENCED_PARAMETER(lpCmdLine);
 #ifdef _DEBUG
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+//	_CrtSetBreakAlloc(74);
 #endif
 	Window* window = Window::GetInstance();
 	window->SetHinstance(&hInstance);
@@ -39,8 +41,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	window->CreateShowWindow(nCmdShow, (WNDPROC)WndProc);
 
 	GameLoopManager* glm = GameLoopManager::GetInstance();
-	OGL::GameScene* entryScene = new Demo1;
-	glm->BeginGameLoopManager(60, entryScene);
+	std::unique_ptr<OGL::GameScene> entryScene = std::make_unique<OGL::Demo1>();
+	glm->BeginGameLoopManager(60, entryScene.get());
 	// Main message loop
 	MSG msg = { 0 };
 	while (1) {
