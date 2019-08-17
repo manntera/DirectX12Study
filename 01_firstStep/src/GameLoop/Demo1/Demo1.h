@@ -17,13 +17,13 @@
 #include <dxgi1_4.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
+#include "../../MathDefine.h"
 #include <wrl.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 
-using namespace DirectX;
 using namespace Microsoft::WRL;
 
 namespace OGL
@@ -33,8 +33,9 @@ namespace OGL
 	private:
 		struct Vertex
 		{
-			XMFLOAT3	pos;
-			XMFLOAT4	col;
+			float3	pos;
+			float4	col;
+		//	float2	texUV;
 		};
 		const int						m_frameBufferCount = 2;
 		D3D12_VIEWPORT						m_viweport;
@@ -42,14 +43,22 @@ namespace OGL
 		ComPtr<ID3D12Device>				m_device;
 		ComPtr<ID3D12CommandQueue>			m_commandQueue;
 		ComPtr<IDXGISwapChain3>				m_swapChain;
-		ComPtr<ID3D12DescriptorHeap>		m_rtvHeap;
+		ComPtr<ID3D12DescriptorHeap>		m_dhRtv;
 		ComPtr<ID3D12Resource>*				m_backBuffer;
 		ComPtr<ID3D12CommandAllocator>		m_commandAllocator;
 		ComPtr<ID3D12RootSignature>			m_rootSignature;
 		ComPtr<ID3D12PipelineState>			m_pipelineState;
-		ComPtr<ID3D12GraphicsCommandList>	m_commandList; 
+		ComPtr<ID3D12GraphicsCommandList>	m_commandList;
+		
+		ComPtr<ID3D12DescriptorHeap>		m_dhCbvSrvUav;
+		ComPtr<ID3D12Resource>				m_constantBuffer;
+		XMMATRIX							m_matrix;
+
 		ComPtr<ID3D12Resource>				m_vertexBuffer;
 		D3D12_VERTEX_BUFFER_VIEW			m_vertexBufferView;
+
+		ComPtr<ID3D12Resource>				m_indexBuffer;
+		D3D12_INDEX_BUFFER_VIEW				m_indexBufferView;
 
 		// 同期オブジェクト
 		HANDLE				m_fenceEvent;

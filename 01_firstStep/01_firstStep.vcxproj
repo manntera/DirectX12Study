@@ -55,6 +55,7 @@
   <ItemGroup>
     <ClInclude Include="src\d3dx12.h" />
     <ClInclude Include="src\GameLoop\Demo1\Demo1.h" />
+    <ClInclude Include="src\MathDefine.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

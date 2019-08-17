@@ -11,6 +11,7 @@
 #include"Demo1.h"
 
 using namespace OGL;
+using namespace DirectX;
 
 //◇-------------------◇
 //◇--	【Init】 ------◇
@@ -93,18 +94,6 @@ bool	Demo1::Init(void)
 		m_frameBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 	}
 
-	//CreateDescriptorHeap
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC	rtvHeapDesc = {};
-		rtvHeapDesc.NumDescriptors = m_frameBufferCount;
-		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		if (FAILED(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)))) {
-			MessageBox(nullptr, "記述子ヒープの作成に失敗しました。", "Error", MB_OK);
-			return false;
-		}
-		m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	}
 	//CreateViewport
 	{
 		m_viweport = { 0.0f,0.0f,
@@ -112,19 +101,34 @@ bool	Demo1::Init(void)
 			(float)Window::GetInstance()->GetHeight() };
 
 	}
+
 	//CreateScissorRect
 	{
 		m_scissorRect = { 0,0,
 			(LONG)Window::GetInstance()->GetWidth(),
 			(LONG)Window::GetInstance()->GetHeight() };
 	}
+
+	//CreateDescriptorHeap
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC	rtvHeapDesc = {};
+		rtvHeapDesc.NumDescriptors = m_frameBufferCount;
+		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		if (FAILED(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_dhRtv)))) {
+			MessageBox(nullptr, "記述子ヒープの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+		m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	}
+
 	//CreateBackBuffer
 	{
 		D3D12_CPU_DESCRIPTOR_HANDLE	rtvHandle = {};
-		rtvHandle.ptr = m_rtvHeap->GetCPUDescriptorHandleForHeapStart().ptr;
+		rtvHandle.ptr = m_dhRtv->GetCPUDescriptorHandleForHeapStart().ptr;
 		m_backBuffer = new ComPtr<ID3D12Resource>[m_frameBufferCount];
 
-		for (UINT i = 0; i < m_frameBufferCount; i++) {
+		for (int i = 0; i < m_frameBufferCount; i++) {
 			if (FAILED(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_backBuffer[i])))) {
 				MessageBox(nullptr, "バックッバッファの作成に失敗しました。", "Error", MB_OK);
 				return false;
@@ -173,13 +177,13 @@ bool	Demo1::Init(void)
 		//CreateInputElement
 		D3D12_INPUT_ELEMENT_DESC	inputElementDescs[] = {
 			{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT	,0,	0,	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
-			{"COLOR",	0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,	12,	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+			{"COLOR",	0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,	sizeof(float3),	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+			//		{"TEX_UV",	0,DXGI_FORMAT_R32G32_FLOAT,0,	sizeof(float3) + sizeof(float4),	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0 }
 		};
 		psoDesc.InputLayout = { inputElementDescs,_countof(inputElementDescs) };
 
 		//CreateVertexShader
 		ComPtr<ID3DBlob> vs;
-		D3D12_SHADER_BYTECODE shaderByteCode;
 		if (FAILED(D3DReadFileToBlob(L"cso/Demo1_VS.cso", vs.GetAddressOf()))) {
 			MessageBox(nullptr, "頂点シェーダーの読み込みに失敗しました。", "Error", MB_OK);
 			return false;
@@ -188,7 +192,6 @@ bool	Demo1::Init(void)
 
 		//CreatePixelShader
 		ComPtr<ID3DBlob> ps;
-		D3D12_SHADER_BYTECODE shaderByteCode_;
 		if (FAILED(D3DReadFileToBlob(L"cso/Demo1_PS.cso", ps.GetAddressOf()))) {
 			MessageBox(nullptr, "ピクセルシェーダーの読み込みに失敗しました。", "Error", MB_OK);
 			return false;
@@ -243,56 +246,62 @@ bool	Demo1::Init(void)
 	}
 	//CreateCommandList
 	{
-	if (FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)))) {
-		MessageBox(nullptr, "コマンドリストの作成に失敗しました。", "Error", MB_OK);
-		return false;
-	}
-	if (FAILED(m_commandList->Close())) {
-		MessageBox(nullptr, "コマンドリストの作成に失敗しました。", "Error", MB_OK);
-		return false;
-	}
+		if (FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)))) {
+			MessageBox(nullptr, "コマンドリストの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+		if (FAILED(m_commandList->Close())) {
+			MessageBox(nullptr, "コマンドリストの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
 	}
 	//CreateVertexBuffer
 	{
 		//CreateGeometryData
 		Vertex vertex[]{
-			{ { 0.0f,  0.25f, 0.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
-			{ { 0.25f, -0.25f, 0.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
-			{ { -0.25f, -0.25f, 0.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } }
+			{ { 1.0f,  1.0f, 0.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
+			{ { 1.0f, -1.0f, 0.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
+			{ { -1.0f, -1.0f, 0.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } },
+			{ { -1.0f, 1.0f, 0.0f },{ 0.0f, 0.0f, 0.0f, 1.0f } }
 		};
-		//CreateHeapProperties
-		D3D12_HEAP_PROPERTIES heapProperties = {};
-		{
-			heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
-			heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-			heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			heapProperties.CreationNodeMask = 1;
-			heapProperties.VisibleNodeMask = 1;
-		}
-		//CreateResourceDesc
-		D3D12_RESOURCE_DESC resourcedesc = {};
-		{
-			resourcedesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-			resourcedesc.Alignment = 0;
-			resourcedesc.Width = sizeof(vertex);
-			resourcedesc.Height = 1;
-			resourcedesc.DepthOrArraySize = 1;
-			resourcedesc.MipLevels = 1;
-			resourcedesc.Format = DXGI_FORMAT_UNKNOWN;
-			resourcedesc.SampleDesc.Count = 1;
-			resourcedesc.SampleDesc.Quality = 0;
-			resourcedesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-			resourcedesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-		}
+		////CreateHeapProperties
+		//D3D12_HEAP_PROPERTIES heapProperties = {};
+		//{
+		//	heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+		//	heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+		//	heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+		//	heapProperties.CreationNodeMask = 1;
+		//	heapProperties.VisibleNodeMask = 1;
+		//}
+		////CreateResourceDesc
+		//D3D12_RESOURCE_DESC resourcedesc = {};
+		//{
+		//	resourcedesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		//	resourcedesc.Alignment = 0;
+		//	resourcedesc.Width = sizeof(vertex);
+		//	resourcedesc.Height = 1;
+		//	resourcedesc.DepthOrArraySize = 1;
+		//	resourcedesc.MipLevels = 1;
+		//	resourcedesc.Format = DXGI_FORMAT_UNKNOWN;
+		//	resourcedesc.SampleDesc.Count = 1;
+		//	resourcedesc.SampleDesc.Quality = 0;
+		//	resourcedesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		//	resourcedesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		//}
 		//CreateResourceForVertexBuffer
-		if (FAILED(m_device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourcedesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexBuffer)))) {
+//		if (FAILED(m_device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourcedesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexBuffer)))) {
+		
+		//CreateResourceForVertexBuffer
+		if (FAILED(m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertex)),
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexBuffer)))) {
 			MessageBox(nullptr, "頂点バッファ用のリソースの作成に失敗しました。", "Error", MB_OK);
 			return false;
 		}
 		//CopyToVertexBuffer
 		{
 			UINT8*	dataBegin;
-			D3D12_RANGE readRange = { 0,0 };
+			CD3DX12_RANGE readRange(0, 0);
 			if (FAILED(m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&dataBegin)))) {
 				MessageBox(nullptr, "頂点バッファの作成に失敗しました。", "Error", MB_OK);
 				return false;
@@ -306,26 +315,97 @@ bool	Demo1::Init(void)
 			m_vertexBufferView.StrideInBytes = sizeof(Vertex);
 			m_vertexBufferView.SizeInBytes = sizeof(vertex);
 		}
-		//CreateFence
+	}
+	//CreateIndexBuffer
+	{
+		//CreateIndexData
+		WORD index[] = { 0,1,2,0,2,3 };
+		//CreateResourceForVertexBuffer
+		if (FAILED(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(sizeof(index)),
+			D3D12_RESOURCE_STATE_GENERIC_READ,nullptr,IID_PPV_ARGS(&m_indexBuffer)))) {
+			MessageBox(nullptr, "インデックスバッファ用のリソースの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+		//CopyToIndexBuffer
 		{
-			if (FAILED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)))) {
-				MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
+			UINT8*	databegin;
+			CD3DX12_RANGE readRange(0, 0);
+			if (FAILED(m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&databegin)))) {
+				MessageBox(nullptr, "インデックスバッファの作成に失敗しました。", "Error", MB_OK);
 				return false;
 			}
-			m_fenceValue = 1;
-			m_fenceEvent = CreateEvent(nullptr, false, false, nullptr);
-			if (m_fenceEvent == nullptr) {
-				if (FAILED(HRESULT_FROM_WIN32(GetLastError()))) {
-					MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
-					return false;
-				}
-			}
-			if (!WaitForPreviousFrame()) {
+			memcpy(databegin, index, sizeof(index));
+			m_indexBuffer->Unmap(0, nullptr);
+		}
+		//InitializeIndexBufferView
+		{
+			m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
+			m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+			m_indexBufferView.SizeInBytes = sizeof(index);
+		}
+	}
+	//CreateDescriptorHeapForCBV_SRV_UAV
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+
+		heapDesc.NumDescriptors = 1;
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		if (FAILED(m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_dhCbvSrvUav)))) {
+			MessageBox(nullptr, "デスクリプタヒープの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+	}
+	//CreateConstantBuffer
+	{
+		if (FAILED(m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(sizeof(float4x4)),
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+			IID_PPV_ARGS(&m_constantBuffer)))) {
+			MessageBox(nullptr, "コンスタントバッファの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+
+
+		if (FAILED(m_constantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_matrix)))) {
+			MessageBox(nullptr, "定数バッファ作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+	}
+	//SetConstantBuffer
+	{
+		m_matrix = XMMatrixSet(10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+	}
+	//SetDescriptor
+	{
+		D3D12_CONSTANT_BUFFER_VIEW_DESC csvDesc = {};
+		csvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
+		csvDesc.SizeInBytes = sizeof(float4x4);
+		m_device->CreateConstantBufferView(&csvDesc, m_dhCbvSrvUav->GetCPUDescriptorHandleForHeapStart());
+	}
+	//CreateFence
+	{
+		if (FAILED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)))) {
+			MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
+		m_fenceValue = 1;
+		m_fenceEvent = CreateEvent(nullptr, false, false, nullptr);
+		if (m_fenceEvent == nullptr) {
+			if (FAILED(HRESULT_FROM_WIN32(GetLastError()))) {
 				MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
 				return false;
 			}
 		}
+		if (!WaitForPreviousFrame()) {
+			MessageBox(nullptr, "フェンスの作成に失敗しました。", "Error", MB_OK);
+			return false;
+		}
 	}
+
 
 	return true;
 }
@@ -336,7 +416,6 @@ bool	Demo1::Init(void)
 //◇---------------------◇
 bool	Demo1::Update(void)
 {
-
 
 	return true;
 }
@@ -368,8 +447,8 @@ bool	Demo1::Draw(void)
 		m_commandList->ResourceBarrier(1, &resourceBarrier);
 	}
 
-	D3D12_CPU_DESCRIPTOR_HANDLE hRtv = {};
-	hRtv.ptr = m_rtvHeap->GetCPUDescriptorHandleForHeapStart().ptr + m_frameBufferIndex*m_rtvDescriptorSize;
+	D3D12_CPU_DESCRIPTOR_HANDLE hRtv = m_dhRtv->GetCPUDescriptorHandleForHeapStart();
+	hRtv.ptr += (m_frameBufferIndex*m_rtvDescriptorSize);
 	m_commandList->OMSetRenderTargets(1, &hRtv, FALSE, nullptr);
 
 	//バックバッファへの描画
@@ -377,7 +456,8 @@ bool	Demo1::Draw(void)
 	m_commandList->ClearRenderTargetView(hRtv, clearCol, 0, nullptr);
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-	m_commandList->DrawInstanced(3, 1, 0, 0);
+	m_commandList->IASetIndexBuffer(&m_indexBufferView);
+	m_commandList->DrawIndexedInstanced(6, 1,0, 0, 0);
 
 	//バックバッファを表示
 	{
